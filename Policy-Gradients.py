@@ -7,24 +7,8 @@ import numpy as np
 
 writer = SummaryWriter()
 
-nodes = 32
-
-class Policy(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.layers = torch.nn.Sequential(
-            torch.nn.Linear(4, nodes),
-            torch.nn.ReLU(),
-            torch.nn.Linear(nodes, 2),
-            torch.nn.Softmax()
-        )
-
-    def forward(self, s):
-        return self.layers(s)
-
 def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=False):
     assert not (use_baseline and use_causality)   # cant implement both simply
-    all_rewards = []
     baseline = 0
     for epoch in range(epochs):
         avg_reward = 0
@@ -34,8 +18,6 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
             state = env.reset()
             log_policy = []
 
-            states = []
-            actions = []
             rewards = []
 
             step = 0
@@ -53,8 +35,6 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
                 
                 new_state, reward, done, info = env.step(action)    # take timestep
 
-                states.append(state)
-                actions.append(action)
                 rewards.append(reward)
 
                 state = new_state
@@ -111,7 +91,6 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
 
 env = gym.make('CartPole-v0')
 
-policy = Policy()
 from utils.NN_boilerplate import NN
 policy = NN([4, 32, 2], distribution=True)
 
