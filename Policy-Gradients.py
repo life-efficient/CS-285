@@ -27,6 +27,7 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
     all_rewards = []
     baseline = 0
     for epoch in range(epochs):
+        avg_reward = 0
         objective = 0
         for episode in range(episodes):
             done = False
@@ -66,6 +67,8 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
                     # break
                     pass
 
+            avg_reward += ( sum(rewards) - avg_reward ) / ( episode + 1 )   # accumulate avg reward
+            writer.add_scalar('Reward/Train', avg_reward, epoch*episodes + episode)     # plot the latest reward
             
             # update baseline
             if use_baseline:
@@ -78,15 +81,15 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
                 else:
                     weight = sum(rewards) - baseline           # weight by the total reward from this episode
                 objective += log_policy[idx] * weight   # add the weighted log likelihood of this taking action to 
+                
 
         objective /= episodes   # average over episodes
         objective *= -1     # invert to represent reward rather than cose
 
-        writer.add_scalar('Reward/Train', sum(rewards), epoch)     # plot the latest reward
 
         # UPDATE POLICY
         # print('updating policy')
-        print('EPOCH:', epoch, 'REWARD:', int(sum(rewards)))
+        print('EPOCH:', epoch, f'AVG REWARD: {avg_reward:.2f}')
         objective.backward()    # backprop
         optimiser.step()    # update params
         optimiser.zero_grad()   # reset gradients to zero
@@ -109,6 +112,8 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
 env = gym.make('CartPole-v0')
 
 policy = Policy()
+from utils.NN_boilerplate import NN
+policy = NN([4, 32, 2], distribution=True)
 
 lr = 0.001
 weight_decay = 1
@@ -118,6 +123,6 @@ train(
     optimiser,
     use_baseline=True,
     use_causality=False,
-    epochs = 100,
-    episodes = 30
+    epochs=400,
+    episodes=30
 )
