@@ -85,7 +85,7 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
         # TRAIN VALUE NETWORK
         for idx, (s, v) in enumerate(loader):   # single run through every state encountered in all episodes
             v_hat = value(s)
-            v_loss = F.mse_loss(v_hat, v.float())
+            v_loss = F.mse_loss(v_hat, v.float().view(-1, 1))
             writer.add_scalar('ValueLoss/Train', v_loss, val_idx)
             v_loss.backward()
             value_optimiser.step()
@@ -94,7 +94,8 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
 
         # UPDATE POLICY NETWORK
         objective /= n_episodes   # average over n_episodes
-        objective *= -1     # invert to represent reward rather than cose
+        objective *= -1     # invert to represent reward rather than cost
+        writer.add_scalar('Objective', objective, epoch)
         objective.backward()    # backprop
         policy_optimiser.step()    # update params
         policy_optimiser.zero_grad()   # reset gradients to zero
@@ -122,10 +123,10 @@ from utils.NN_boilerplate import NN
 policy = NN([4, 32, 2], distribution=True)
 value = NN([4, 32, 1])
 
-lr = 0.001
-weight_decay = 1
-policy_optimiser = torch.optim.SGD(policy.parameters(), lr=lr, weight_decay=weight_decay)
-value_optimiser = torch.optim.SGD(policy.parameters(), lr=lr, weight_decay=weight_decay)
+lr = 0.01
+weight_decay = 0
+policy_optimiser = torch.optim.Adam(policy.parameters(), lr=lr, weight_decay=weight_decay)
+value_optimiser = torch.optim.Adam(policy.parameters(), lr=lr, weight_decay=weight_decay)
 
 train(
     policy,
@@ -134,5 +135,5 @@ train(
     value_optimiser,
     discount_factor=0.9,
     epochs=400,
-    n_episodes=30
+    n_episodes=3
 )
