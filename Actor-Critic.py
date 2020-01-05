@@ -27,7 +27,7 @@ class ValueDataset(Dataset):
     def __len__(self):
         return len(self.examples)   # how many examples generated  
 
-def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99, epochs=100, n_episodes=30):
+def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99, epochs=100, n_episodes=30, n_steps_for_eligibility_traces=False):
     val_idx = 0
     for epoch in range(epochs):
         avg_reward = 0
@@ -70,7 +70,7 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
             # ACCUMULATE POLICY OBJECTIVE
             T = len(episode['rewards'])
             next_state_value = 0    # initialise the value of the state that follows the last state to zero 
-            for t in range(T-1):     # for each timestep experienced in the episode, back up from the end and compute the bootstrapped advantage
+            for t in range(T-1):     # for each timestep in the episode, compute advantage and the objective for the policy network (each computation uses the next state, so only go up to T-1)
                 if t == 0:
                     state = episode['states'][t]
                     current_state_value = value(state)  # use bootstrapped prediction of state value using your current value network
@@ -80,9 +80,23 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
                 next_state = episode['states'][t + 1]
                 next_state_value = value(next_state)
 
-                reward = episode['rewards'][t]
 
-                advantage = reward + ( discount_factor * next_state_value ) - current_state_value
+                if n_steps_for_eligibility_traces: # if this is not none (it should be an integer describing how far ahead to use a monte carlo prediction for the state value)
+                    advantage = 0 # just to initialise (we will add to this with the Monte Carlo and critic contributions to the advantage)
+                    if t + n_steps_for_eligibility_traces > T - 1: # if the MC lookahead looks beyond the end of the episode (max value of t is T-1)
+                        N = T - t # limit the lookahead
+                        rewards = episode['rewards'][t:] # same as [t:t+N]
+                    else:
+                        N = n_steps_for_eligibility_traces # otherwise we can look the full length ahead
+                        rewards = episode['rewards'][t: t + N] # get list of rewards that many steps in future
+                        print('len ep:', T, '\tt:', t, '\tN:', N)
+                        state_n_steps_ahead = episode['states'][t + N] # get the state N steps ahead
+                        advantage += discount_factor**N * value(state_n_steps_ahead) # add critic part of the advantage (long term predictions) - the discounted value of the state N steps ahead
+                    advantage += sum([discount_factor**n * rewards[n] for n in range(N)]) # calculate monte carlo part of advantage
+                    advantage -= current_state_value # 
+                else:
+                    reward = episode['rewards'][t]
+                    advantage = reward + ( discount_factor * next_state_value ) - current_state_value
                 # print('reward:', reward)
                 # print('current val:', current_state_value)
                 # print('next val:', next_state_value)
@@ -159,5 +173,6 @@ train(
     value_optimiser,
     discount_factor=0.9,
     epochs=4000,
-    n_episodes=10
+    n_episodes=10,
+    n_steps_for_eligibility_traces=10
 )
