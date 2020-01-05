@@ -66,25 +66,43 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
             episodes.append(episode)
 
             avg_reward += ( sum(episode['rewards']) - avg_reward ) / ( episode_idx + 1 )   # accumulate avg reward
-            writer.add_scalar('Reward/Train', avg_reward, epoch*n_episodes + episode_idx)     # plot the latest reward
-            
+
             # ACCUMULATE POLICY OBJECTIVE
             T = len(episode['rewards'])
             next_state_value = 0    # initialise the value of the state that follows the last state to zero 
-            for t in range(T):     # for each timestep experienced in the episode
-                state = episode['states'][t]
-                reward = episode['rewards'][t]
-                current_state_value = value(state)
-                advantage = reward + discount_factor * next_state_value - current_state_value
-                objective += log_policy[t] * advantage   # add the weighted log likelihood of this taking action to the objective
-                next_state_value = current_state_value
+            for t in range(T-1):     # for each timestep experienced in the episode, back up from the end and compute the bootstrapped advantage
+                if t == 0:
+                    state = episode['states'][t]
+                    current_state_value = value(state)  # use bootstrapped prediction of state value using your current value network
+                else:
+                    current_state_value = next_state_value # we've already predicted the current value - we predicted the next value one timestep ago
 
+                next_state = episode['states'][t + 1]
+                next_state_value = value(next_state)
+
+                reward = episode['rewards'][t]
+
+                advantage = reward + ( discount_factor * next_state_value ) - current_state_value
+                # print('reward:', reward)
+                # print('current val:', current_state_value)
+                # print('next val:', next_state_value)
+                # print('adv:', advantage)
+                objective += log_policy[t] * advantage   # add the weighted log likelihood of this taking action to the objective (log_policy is negative)
+                # print('log policy:', log_policy[t])
+                # print('adding to obj:', log_policy[t] * advantage)
+                # print()
+
+
+        writer.add_scalar('Reward/Train', avg_reward, epoch*n_episodes + episode_idx)     # plot the average reward for the episodes that were run
+        
         # GENERATE SUPERVISED (STATE, VALUE) DATASET TO UPDATE VALUE NETWORK
-        dataset = ValueDataset(episodes, discount_factor=0.9)
+        dataset = ValueDataset(episodes, discount_factor=discount_factor)
         loader = DataLoader(dataset, shuffle=True, batch_size=16)
         # TRAIN VALUE NETWORK
         for idx, (s, v) in enumerate(loader):   # single run through every state encountered in all episodes
             v_hat = value(s)
+            # print('predicted value:', v_hat)
+            # print('true value:', v.float().view(-1, 1))
             v_loss = F.mse_loss(v_hat, v.float().view(-1, 1))
             writer.add_scalar('ValueLoss/Train', v_loss, val_idx)
             v_loss.backward()
@@ -94,13 +112,15 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
 
         # UPDATE POLICY NETWORK
         objective /= n_episodes   # average over n_episodes
-        objective *= -1     # invert to represent reward rather than cost
+        objective *= -1     # invert to represent cost rather than reward
         writer.add_scalar('Objective', objective, epoch)
-        objective.backward()    # backprop
-        policy_optimiser.step()    # update params
+        objective.backward()    # backprop - puts .grad values in parameters of both value and policy network
+        policy_optimiser.step()    # update params given to policy optimiser ()
         policy_optimiser.zero_grad()   # reset gradients to zero
+        value_optimiser.zero_grad() # the obj is a function of the advantage which is a function of the value network's output 
         
         print('EPOCH:', epoch, f'AVG REWARD: {avg_reward:.2f}')
+        print()
 
         # VISUALISE AT END OF EPOCH AFTER UPDATING POLICY
         state = env.reset()
@@ -118,15 +138,19 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
 
 
 env = gym.make('CartPole-v0')
+# env = gym.make('LunarLander-v2')
+# env = GriddyEnv()
 
 from utils.NN_boilerplate import NN
-policy = NN([4, 32, 2], distribution=True)
-value = NN([4, 32, 1])
+import numpy as np
+policy = NN([np.prod(env.observation_space.shape), 32, 16, 2], distribution=True)
+value = NN([np.prod(env.observation_space.shape), 32, 16, 1])
 
-lr = 0.01
+p_lr = 0.01
+v_lr = 0.001
 weight_decay = 0
-policy_optimiser = torch.optim.Adam(policy.parameters(), lr=lr, weight_decay=weight_decay)
-value_optimiser = torch.optim.Adam(policy.parameters(), lr=lr, weight_decay=weight_decay)
+policy_optimiser = torch.optim.Adam(policy.parameters(), lr=p_lr, weight_decay=weight_decay)
+value_optimiser = torch.optim.Adam(value.parameters(), lr=v_lr, weight_decay=weight_decay)
 
 train(
     policy,
@@ -134,6 +158,6 @@ train(
     policy_optimiser,
     value_optimiser,
     discount_factor=0.9,
-    epochs=400,
-    n_episodes=3
+    epochs=4000,
+    n_episodes=10
 )

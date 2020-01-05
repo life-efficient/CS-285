@@ -64,7 +64,7 @@ def train(optimiser, epochs=100, episodes=30, use_baseline=False, use_causality=
                 
 
         objective /= episodes   # average over episodes
-        objective *= -1     # invert to represent reward rather than cose
+        objective *= -1     # invert to represent reward rather than cost
 
 
         # UPDATE POLICY
