@@ -27,7 +27,7 @@ class ValueDataset(Dataset):
     def __len__(self):
         return len(self.examples)   # how many examples generated  
 
-def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99, epochs=100, n_episodes=30, n_steps_for_eligibility_traces=False):
+def train(policy, value, discount_factor=0.99, epochs=100, n_episodes=30, n_steps_for_eligibility_traces=False, generalised_advantage_error=False):
     val_idx = 0
     for epoch in range(epochs):
         avg_reward = 0
@@ -70,6 +70,7 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
             # ACCUMULATE POLICY OBJECTIVE
             T = len(episode['rewards'])
             next_state_value = 0    # initialise the value of the state that follows the last state to zero 
+
             for t in range(T-1):     # for each timestep in the episode, compute advantage and the objective for the policy network (each computation uses the next state, so only go up to T-1)
                 if t == 0:
                     state = episode['states'][t]
@@ -81,7 +82,19 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
                 next_state_value = value(next_state)
 
 
-                if n_steps_for_eligibility_traces: # if this is not none (it should be an integer describing how far ahead to use a monte carlo prediction for the state value)
+                if generalised_advantage_error:
+                    # this GAE implementation is drastically underoptimised because all proceeding state values are being computed in each loop
+                    # we should move it out of this loop and compute the values for all states visited in the episode in advance 
+                    _lambda = generalised_advantage_error # the GAE kwarg should be the value of lambda \in [0, 1)
+                    advantage = 0
+                    for t_prime in range(t, T - 1):
+                        reward = episode['rewards'][t_prime]
+                        current_state = episode['states'][t_prime]
+                        next_state = episode['states'][t_prime + 1]
+                        current_state_value = value(current_state)
+                        next_state_value = value(next_state)
+                        advantage += (_lambda * discount_factor )** (t_prime - t) * ( reward + ( discount_factor * next_state_value ) - current_state_value )   
+                elif n_steps_for_eligibility_traces: # if this is not none (it should be an integer describing how far ahead to use a monte carlo prediction for the state value)
                     advantage = 0 # just to initialise (we will add to this with the Monte Carlo and critic contributions to the advantage)
                     if t + n_steps_for_eligibility_traces > T - 1: # if the MC lookahead looks beyond the end of the episode (max value of t is T-1)
                         N = T - t # limit the lookahead
@@ -113,15 +126,15 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
         dataset = ValueDataset(episodes, discount_factor=discount_factor)
         loader = DataLoader(dataset, shuffle=True, batch_size=16)
         # TRAIN VALUE NETWORK
-        for idx, (s, v) in enumerate(loader):   # single run through every state encountered in all episodes
+        for s, v in loader:   # single run through every state encountered in all episodes
             v_hat = value(s)
             # print('predicted value:', v_hat)
             # print('true value:', v.float().view(-1, 1))
             v_loss = F.mse_loss(v_hat, v.float().view(-1, 1))
             writer.add_scalar('ValueLoss/Train', v_loss, val_idx)
             v_loss.backward()
-            value_optimiser.step()
-            value_optimiser.zero_grad()
+            value.optimiser.step()
+            value.optimiser.zero_grad()
             val_idx += 1
 
         # UPDATE POLICY NETWORK
@@ -129,9 +142,9 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
         objective *= -1     # invert to represent cost rather than reward
         writer.add_scalar('Objective', objective, epoch)
         objective.backward()    # backprop - puts .grad values in parameters of both value and policy network
-        policy_optimiser.step()    # update params given to policy optimiser ()
-        policy_optimiser.zero_grad()   # reset gradients to zero
-        value_optimiser.zero_grad() # the obj is a function of the advantage which is a function of the value network's output 
+        policy.optimiser.step()    # update params given to policy optimiser ()
+        policy.optimiser.zero_grad()   # reset gradients to zero
+        value.optimiser.zero_grad() # the obj is a function of the advantage which is a function of the value network's output 
         
         print('EPOCH:', epoch, f'AVG REWARD: {avg_reward:.2f}')
         print()
@@ -152,8 +165,6 @@ def train(policy, value, policy_optimiser, value_optimiser, discount_factor=0.99
 
 
 env = gym.make('CartPole-v0')
-# env = gym.make('LunarLander-v2')
-# env = GriddyEnv()
 
 from utils.NN_boilerplate import NN
 import numpy as np
@@ -163,16 +174,15 @@ value = NN([np.prod(env.observation_space.shape), 32, 16, 1])
 p_lr = 0.01
 v_lr = 0.001
 weight_decay = 0
-policy_optimiser = torch.optim.Adam(policy.parameters(), lr=p_lr, weight_decay=weight_decay)
-value_optimiser = torch.optim.Adam(value.parameters(), lr=v_lr, weight_decay=weight_decay)
+policy.optimiser = torch.optim.Adam(policy.parameters(), lr=p_lr, weight_decay=weight_decay)
+value.optimiser = torch.optim.Adam(value.parameters(), lr=v_lr, weight_decay=weight_decay)
 
 train(
     policy,
     value,
-    policy_optimiser,
-    value_optimiser,
     discount_factor=0.9,
     epochs=4000,
     n_episodes=10,
-    n_steps_for_eligibility_traces=10
+    n_steps_for_eligibility_traces=5,
+    generalised_advantage_error=True
 )
