@@ -97,24 +97,19 @@ env = gym.make('FrozenLake-v0', is_slippery=is_slippery)
 
 def model(self, state, action):
     row, col = state // self.ncol, state % self.ncol
-    print(row, col)
-    new_states = [(row, max(col-1, 0)), (min(row+1, self.nrow), col), (row, min(col+1, self.ncol)), (max(row-1, 0), col)] # new (row, col) if action [left, down, right, up] is taken
+    new_states = [(row, max(col-1, 0)), (min(row+1, self.nrow - 1), col), (row, min(col+1, self.ncol - 1)), (max(row-1, 0), col)] # new (row, col) if action [left, down, right, up] is taken
     if is_slippery:
-        action_probs = np.ones(self.action_space.n)
-        action_probs[(action + 2) % 4] = 0   # all possible actions can be taken, unless its opposite to the one you tried to take (if we try to go up we will never go down, only left, up or right)
-        action_probs /= sum(action_probs)    # each remaining action which actually occurs has equal probability
+        transition_probs = np.ones(self.action_space.n)
+        transition_probs[(action + 2) % 4] = 0   # all possible actions can be taken, unless its opposite to the one you tried to take (if we try to go up we will never go down, only left, up or right)
+        transition_probs /= sum(transition_probs)    # each remaining action which actually occurs has equal probability
     else:
-        action_probs = np.zeros(self.action_space.n)
-        action_probs[action] = 1    # deterministic - the state in the direction of the action is certain to be observed next
-    print(new_states)
-    print(action_probs)
-    print(self.desc)
-    rewards = [self.desc]
-    k
-    return zip(new_states, action_probs) # return list of (new state, probability of going into that state)
+        transition_probs = np.zeros(self.action_space.n)
+        transition_probs[action] = 1    # deterministic - the state in the direction of the action is certain to be observed next
+    rewards = [np.float(self.desc[row, col] ==b'G') for (row, col) in new_states]
+    return zip(new_states, rewards, transition_probs) # return list of (new state, probability of going into that state)
 
 env.model = types.MethodType(model, env) # attach model to env
-env.model(5, 3)
+env.model(11, 3)
 
 
 
