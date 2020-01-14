@@ -5,6 +5,7 @@ from utils.NN_boilerplate import NN
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Dataset, DataLoader
+import types
 
 writer = SummaryWriter()
 
@@ -23,50 +24,41 @@ class ValueTable():
     def policy(self, state):
         # if np.random.rand() > epsilon:
         #     return np.random.randint(self.table.shape[1]) # take a random action
-
         return np.argmax(self.table[state])
 
-class ValueDataset(Dataset):
-    def __init__(self, experiences):
-        self.examples = []
-        for (state, action, reward, new_state) in experiences:
-            print(state)
-            target = reward + discount_factor * value(new_state)
-            self.examples.append(state, target)
-
-    def __len__(self):
-        return self.len(examples)
-
-    def __getitem__(self, idx):
-        return self.examples[idx]
-
-def train(env, value, value_table):
+def train(env, value_table):
     for policy_idx in range(num_updates): # every update creates a new policy
+        # POLICY EVALUATION step 1 = SIMULATE EPISODES 
+        # for state in range(env.observation_space.n):            
+        #     old_value = value_table[1, 1]
+        #     print(old_value)
+        #     # new_value = reward + discount_factor * value_table[new_state]
 
-        # POLICY EVALUATION step 1 = RUN/SIMULATE EPISODES 
-        # experiences = []
-        for state in range(env.observation_space.n):
+            # l
+        for episode_idx in range(episodes_per_update):
+            done = False
+            state = env.reset()
+            total_reward = 0
+            while not done:
+                state = torch.tensor(state)
+                action = value_table.policy(state)
+                # print('action:', action)
+                new_state, reward, done, _ = env.step(1)
+                total_reward += reward
+                env.render()
 
-            old_value = value_table[1, 1]
-            print(old_value)
-            l
-        # for episode_idx in range(episodes_per_update):
-        #     done = False
-        #     state = env.reset()
-        #     total_reward = 0
-        #     while not done:
-        #         state = torch.tensor(state)
-        #         action = value_table.policy(state)
-        #         print('action:', action)
-        #         new_state, reward, done, _ = env.step(action)
-        #         total_reward += reward
-        #         env.render()
-        #         sleep(0.1)
-        #         experiences.append((state, action, reward, new_state))
-        #         state = new_state
-        #         print('STATE;',state)
-        #         print(done)
-        #         print()
+                print()
+                row, col = new_state // 4, new_state % 4
+                print(row, col)
+                print(env.desc)
+                sleep(0.1)
+                # experiences.append((state, action, reward, new_state))
+                state = new_state
+                # print('STATE;',state)
+                print(done)
+                print()
+                k
+            k
 
             # writer.add_scalar('Reward/Train', total_reward, episode_idx + policy_idx * episodes_per_update)
 
@@ -102,8 +94,31 @@ discount_factor = 0.75
 
 is_slippery=False
 env = gym.make('FrozenLake-v0', is_slippery=is_slippery)
-value = NN([env.observation_space.n, 16, 16, 1], distribution=False)
+
+def model(self, state, action):
+    row, col = state // self.ncol, state % self.ncol
+    print(row, col)
+    new_states = [(row, max(col-1, 0)), (min(row+1, self.nrow), col), (row, min(col+1, self.ncol)), (max(row-1, 0), col)] # new (row, col) if action [left, down, right, up] is taken
+    if is_slippery:
+        action_probs = np.ones(self.action_space.n)
+        action_probs[(action + 2) % 4] = 0   # all possible actions can be taken, unless its opposite to the one you tried to take (if we try to go up we will never go down, only left, up or right)
+        action_probs /= sum(action_probs)    # each remaining action which actually occurs has equal probability
+    else:
+        action_probs = np.zeros(self.action_space.n)
+        action_probs[action] = 1    # deterministic - the state in the direction of the action is certain to be observed next
+    print(new_states)
+    print(action_probs)
+    print(self.desc)
+    rewards = [self.desc]
+    k
+    return zip(new_states, action_probs) # return list of (new state, probability of going into that state)
+
+env.model = types.MethodType(model, env) # attach model to env
+env.model(5, 3)
+
+
+
+# value = NN([env.observation_space.n, 16, 16, 1], distribution=False)
 value_table = ValueTable(env)
 epochs = 100
-epsilon = 0.9
-train(env, value, value_table)
+train(env, value_table)

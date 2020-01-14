@@ -182,7 +182,7 @@ train(
     value,
     discount_factor=0.9,
     epochs=4000,
-    n_episodes=10,
+    i_episodes=10,
     n_steps_for_eligibility_traces=5,
     generalised_advantage_error=True
 )
