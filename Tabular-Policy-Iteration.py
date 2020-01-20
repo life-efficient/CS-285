@@ -111,8 +111,6 @@ def model(self, state, action):
 env.model = types.MethodType(model, env) # attach model to env
 env.model(11, 3)
 
-
-
 # value = NN([env.observation_space.n, 16, 16, 1], distribution=False)
 value_table = ValueTable(env)
 epochs = 100
