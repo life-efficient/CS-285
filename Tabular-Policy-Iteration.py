@@ -7,111 +7,137 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Dataset, DataLoader
 import types
 
-writer = SummaryWriter()
-
 # policy iteration needs a value table to perform the argmax over actions
 class ValueTable():
-    def __init__(self, env):
-        self.table = np.zeros((env.observation_space.n, env.action_space.n))
+    def __init__(self, num_states=16):
+        self.table = {state: 0 for state in range(num_states)}
 
-    def __getitem__(self, index):
-        state, action = index
-        return self.table[state, action]
+    def __getitem__(self, state):
+        return self.table[state]
+
+    def __repr__(self):
+        return str(self.table)
         
-    def update(self, state, action, new_value):
-        self.table[state][action] = new_value # find value of idx in table
+    def update(self, state, new_value):
+        self.table[state] = new_value # find value of idx in table
 
-    def policy(self, state):
-        # if np.random.rand() > epsilon:
-        #     return np.random.randint(self.table.shape[1]) # take a random action
-        return np.argmax(self.table[state])
+class GreedyPolicy():
+    def __init__(self, num_states=16):
+        self.policy = {state: 0 for state in range(num_states)} # initialise action 0 for each state
 
+    def update(self, state, value):
+        self.policy[state] = value
+
+    def __getitem__(self, state):
+        return self.policy[state]
+
+def policy_evaluation(policy, value_table, model, error_threshold=0.01):
+    converged = False
+    sweep_idx = 0
+    while not converged:   
+        print('sweep ', sweep_idx)
+        sweep_idx += 1
+        worst_delta = 0     
+        for state in value_table.table.keys():
+            old_val = value_table[state]
+            action = policy[state]
+            possible_transitions = model(state, action)
+            new_val = 0
+            for possible_transition in possible_transitions: # considering all possible transitions
+                new_state, reward, probability = possible_transition # unpack that transition
+                new_val += probability * (reward + discount_factor * value_table[new_state]) # cumulate expected value
+
+            # UPDATE VALUE IN TABLE
+            value_table.update(state, new_val)
+
+            # EVALUATE DELTA
+            delta = abs(new_val - old_val) # difference between state values between iterations
+            worst_delta = max(worst_delta, delta) # update worst difference
+
+        # CHECK CONVERGED
+        if worst_delta < error_threshold:
+            converged = True
+
+    return value_table
+
+def policy_improvement(value_table, model):
+    new_policy = GreedyPolicy() # we don't need the previous policy, we'll just create a new one from the current value table
+    for state in value_table.table.keys():
+        best_value = -float('inf')
+        best_action = None
+        for action in range(4):
+            possible_transitions = model(state, action)
+            val = 0
+            for possible_transition in possible_transitions:
+                new_state, reward, probability = possible_transition
+                val += probability * (reward + discount_factor * value_table[new_state])
+            if val > best_value:
+                best_value = val
+                best_action = action
+        new_policy.update(state, best_action)
+    return new_policy
+        
 def train(env, value_table):
-    for policy_idx in range(num_updates): # every update creates a new policy
-        # POLICY EVALUATION step 1 = SIMULATE EPISODES 
-        # for state in range(env.observation_space.n):            
-        #     old_value = value_table[1, 1]
-        #     print(old_value)
-        #     # new_value = reward + discount_factor * value_table[new_state]
 
-            # l
-        for episode_idx in range(episodes_per_update):
-            done = False
-            state = env.reset()
-            total_reward = 0
-            while not done:
-                state = torch.tensor(state)
-                action = value_table.policy(state)
-                # print('action:', action)
-                new_state, reward, done, _ = env.step(1)
-                total_reward += reward
-                env.render()
+    def check_stable(new_policy, old_policy):
+        stable = True
+        for state in value_table.table.keys():
+            if new_policy[state] != old_policy[state]:
+                stable = False
+        return stable
 
-                print()
-                row, col = new_state // 4, new_state % 4
-                print(row, col)
-                print(env.desc)
-                sleep(0.1)
-                # experiences.append((state, action, reward, new_state))
-                state = new_state
-                # print('STATE;',state)
-                print(done)
-                print()
-                k
-            k
+    policy_stable = False
+    policy = GreedyPolicy() # initialise randomly
+    policy_idx = 0
+    while not policy_stable:
 
-            # writer.add_scalar('Reward/Train', total_reward, episode_idx + policy_idx * episodes_per_update)
+        print('policy ', policy_idx)
 
-        # POLICY EVALUATION step 2 = FIT VALUE FUNCTION
-        experience_dataset = ValueDataset(experiences)
-        experience_loader = DataLoader(experience_dataset, shuffle=True, batch_size=16)
-        for epoch_idx, epoch in enumerate(epochs):
-            avg_loss = 0
-            for state, target_value in experience_loader:
-                print(state)
-                input_state = torch.tensor(state).view()
-                predicted_value = value(state)
-                loss = torch.nn.MSELoss(predicted_value, target_value)
-                loss.backward()
-                optimiser.step()
-                optimiser.zero_grad()
-            avg_loss /= len(experiences)
-            writer.add_scalar('ValueLoss/Train', avg_loss, epoch + policy_idx * len(experiences))
+        # POLICY EVALUATION
+        value_table = policy_evaluation(policy, value_table, env.model) # find value function for current policy
+        print('value_table:', value_table)
 
-        # POLICY ITERATION = UPDATE POLICY
-        for state in range(env.observation_space.n):
-            for action in range(env.action_space.n):
-                print(state)
-                new_value = value(torch.tensor(state).view(1, -1))
-                value_table.update(state, action, new_value) # update the value for this (s, a) in the value table
-        
+        # POLICY IMPROVEMENT
+        new_policy = policy_improvement(value_table, env.model) # get new policy by acting greedily with respect to the current value table
 
+        # CHECK STABLE POLICY REACHED
+        policy_stable = check_stable(new_policy, policy) 
 
+        # ITERATE CURRENT POLICY
+        policy = new_policy  
+
+        print()
+
+    print('Optimal policy found')
+    return policy
 
 episodes_per_update = 1
 num_updates = 100
 discount_factor = 0.75
 
-is_slippery=False
-env = gym.make('FrozenLake-v0', is_slippery=is_slippery)
-
 def model(self, state, action):
     row, col = state // self.ncol, state % self.ncol
+    if self.desc[row, col] == b'G': return [] # if current state is goal state, no transitions can occur - so return empty list of possible transitions
     new_states = [(row, max(col-1, 0)), (min(row+1, self.nrow - 1), col), (row, min(col+1, self.ncol - 1)), (max(row-1, 0), col)] # new (row, col) if action [left, down, right, up] is taken
-    if is_slippery:
+    if self.is_slippery: # if stochastic environment
         transition_probs = np.ones(self.action_space.n)
         transition_probs[(action + 2) % 4] = 0   # all possible actions can be taken, unless its opposite to the one you tried to take (if we try to go up we will never go down, only left, up or right)
         transition_probs /= sum(transition_probs)    # each remaining action which actually occurs has equal probability
     else:
         transition_probs = np.zeros(self.action_space.n)
         transition_probs[action] = 1    # deterministic - the state in the direction of the action is certain to be observed next
-    rewards = [np.float(self.desc[row, col] ==b'G') for (row, col) in new_states]
-    return zip(new_states, rewards, transition_probs) # return list of (new state, probability of going into that state)
+    rewards = [np.float(self.desc[row, col] == b'G') for (row, col) in new_states]
+    new_states = [self.nrow * s[0] + s[1] for s in new_states]
+    return list(zip(new_states, rewards, transition_probs)) # return list of (new state, reward, probability of that transition)
 
+is_slippery=False # stochastic environment?
+env = gym.make('FrozenLake-v0', is_slippery=is_slippery) # intialise environment
 env.model = types.MethodType(model, env) # attach model to env
-env.model(11, 3)
+env.is_slippery = is_slippery # attach is slippery attribute to env for model to use
+t = env.model(11, 3) # test model
+print(t)
+print()
 
-# value = NN([env.observation_space.n, 16, 16, 1], distribution=False)
-value_table = ValueTable(env)
+value_table = ValueTable()
 epochs = 100
 train(env, value_table)
