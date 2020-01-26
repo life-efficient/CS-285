@@ -31,6 +31,9 @@ class GreedyPolicy():
     def __getitem__(self, state):
         return self.policy[state]
 
+    def __repr__(self):
+        return str(self.policy)
+
 def policy_evaluation(policy, value_table, model, error_threshold=0.01):
     converged = False
     sweep_idx = 0
@@ -109,11 +112,12 @@ def train(env, value_table):
         print()
 
     print('Optimal policy found')
+    print(policy)
     return policy
 
 episodes_per_update = 1
 num_updates = 100
-discount_factor = 0.75
+discount_factor = 0.9
 
 def model(self, state, action):
     row, col = state // self.ncol, state % self.ncol
