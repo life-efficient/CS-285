@@ -1,49 +1,115 @@
-import torch
 from time import sleep
 import gym
-from utils.NN_boilerplate import NN
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import Dataset, DataLoader
+import types
+import Models
 
-writer = SummaryWriter()
+# policy iteration needs a value table to perform the argmax over actions
+class ValueTable():
+    def __init__(self, num_states=16):
+        self.table = {state: 0 for state in range(num_states)}
 
+    def __getitem__(self, state):
+        return self.table[state]
 
-class ValueDataset(Dataset):
-    def __init__(self, experiences):
-        self.examples = []
-        for (state, action, reward, new_state) in experiences:
-            print(state)
-            target = reward + discount_factor * value(new_state)
-            self.examples.append(state, target)
+    def __repr__(self):
+        return str(self.table)
+        
+    def update(self, state, new_value):
+        self.table[state] = new_value # find value of idx in table
 
-    def __len__(self):
-        return self.len(examples)
+def extract_policy(model, value_table): # returns a policy from a value function
+    policy = {}
+    for state in value_table.table.keys():
+        best_value = -float('inf')
+        best_action = None
+        for action in range(4):
+            possible_transitions = model(state, action)
+            val = 0
+            for possible_transition in possible_transitions:
+                new_state, reward, probability = possible_transition
+                val += probability * (reward + discount_factor * value_table[new_state])
+            if val > best_value:
+                best_value = val
+                best_action = action
+        policy[state] = best_action
 
-    def __getitem__(self, idx):
-        return self.examples[idx]
+    print('Extracted policy:')
+    print(policy)
+    return policy
+        
+def train(model, accuracy_threshold=0.01):
+    value_table = ValueTable()
+    converged = False
+    sweep_idx = 0
+    while not converged:
+        print('\nsweep ', sweep_idx)
+        sweep_idx += 1
+        worst_delta = 0
+        
+        for state in value_table.table.keys():
+            best_value = -float('inf')
+            old_value = value_table[state]
+            for action in range(4): # find action with best value
+                possible_transitions = model(state, action)
+                val = 0
+                for possible_transition in possible_transitions:
+                    new_state, reward, probability = possible_transition
+                    val += probability * (reward + discount_factor * value_table[new_state])
+                if val > best_value:
+                    best_value = val
+            new_value = best_value # set value to max value over all actions
+            value_table.update(state, new_value) # this implementation updates the value function in-place. It could alternatively create a new value table each sweep which would replace the value function only after the complete sweep.
+            delta = abs(new_value - old_value) # compare difference values for this state using old and new value table 
+            worst_delta = max(worst_delta, delta) # update worst difference between values for a state
 
+        # CHECK CONVERGENCE
+        if worst_delta < accuracy_threshold:
+            converged = True
 
-def train(env, value, value_table):
-    for policy_idx in range(num_updates): # every update creates a new policy
+    print('Optimal value function found')
+    print(value_table)
+    return value_table
 
-        # POLICY EVALUATION step 1 = RUN/SIMULATE EPISODES 
-        # experiences = []
-        for state in range(env.observation_space.n):
-        # for episode_idx in range(episodes_per_update):
-        #     done = False
-        #     state = env.reset()
-        #     total_reward = 0
-        #     while not done:
-        #         state = torch.tensor(state)
-        #         action = value_table.policy(state)
-        #         print('action:', action)
-        #         new_state, reward, done, _ = env.step(action)
-        #         total_reward += reward
-        #         env.render()
-        #         sleep(0.1)
-        #         experiences.append((state, action, reward, new_state))
-        #         state = new_state
-        #         print('STATE;',state)
-        #         print(done)
-        #         print()
+discount_factor = 0.9
+
+is_slippery=False # stochastic environment?
+env = gym.make('FrozenLake-v0', is_slippery=is_slippery) # intialise environment
+model = Models.FrozenLakeModel
+env.model = types.MethodType(model, env) # attach model to env
+env.is_slippery = is_slippery # attach is slippery attribute to env for model to use
+t = env.model(11, 3) # test model
+print(t)
+print()
+
+epochs = 100
+optimal_value_function = train(env.model)
+optimal_policy = extract_policy(env.model, optimal_value_function)
+
+def policy_evaluation(value_table, model, error_threshold=0.01):
+    converged = False
+    sweep_idx = 0
+    while not converged:   
+        print('sweep ', sweep_idx)
+        sweep_idx += 1
+        worst_delta = 0     
+        for state in value_table.table.keys():
+            old_val = value_table[state]
+            possible_transitions = model(state, action)
+            new_val = 0
+            for possible_transition in possible_transitions: # considering all possible transitions
+                new_state, reward, probability = possible_transition # unpack that transition
+                new_val += probability * (reward + discount_factor * value_table[new_state]) # cumulate expected value
+
+            # UPDATE VALUE IN TABLE
+            value_table.update(state, new_val)
+
+            # EVALUATE DELTA
+            delta = abs(new_val - old_val) # difference between state values between iterations
+            worst_delta = max(worst_delta, delta) # update worst difference
+
+        # CHECK CONVERGED
+        if worst_delta < error_threshold:
+            converged = True
+
+    return value_table

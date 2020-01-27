@@ -115,8 +115,6 @@ def train(env, value_table):
     print(policy)
     return policy
 
-episodes_per_update = 1
-num_updates = 100
 discount_factor = 0.9
 
 def model(self, state, action):
