@@ -4,28 +4,9 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from time import sleep
+from MyDatasets import ValueDataset 
 
 writer = SummaryWriter()
-
-class ValueDataset(Dataset):
-    def __init__(self, episodes, discount_factor):
-        super().__init__()
-        self.examples = []  # initialise empty list of datapoints
-        for episode in episodes:    # for each episode that just ran
-            states = episode['states']
-            rewards = episode['rewards']
-            T = len(rewards)    # length of episode
-            _return = 0    # initialise future reward for last timestep
-            for t in reversed(range(T)):    # do back up
-                state = states[t]    # get state
-                _return = rewards[t] + discount_factor * _return     # calculate return recursively
-                self.examples.append((state, _return))  # add (state, value) tuple to list of datapoints
-
-    def __getitem__(self, idx):
-        return self.examples[idx]   # return (state, value) tuple
-
-    def __len__(self):
-        return len(self.examples)   # how many examples generated  
 
 def train(policy, value, discount_factor=0.99, epochs=100, n_episodes=30, n_steps_for_eligibility_traces=False, generalised_advantage_error=False):
     val_idx = 0
@@ -182,7 +163,7 @@ train(
     value,
     discount_factor=0.9,
     epochs=4000,
-    i_episodes=10,
+    n_episodes=10,
     n_steps_for_eligibility_traces=5,
     generalised_advantage_error=True
 )

@@ -63,11 +63,13 @@ def train(model, accuracy_threshold=0.01):
             delta = abs(new_value - old_value) # compare difference values for this state using old and new value table 
             worst_delta = max(worst_delta, delta) # update worst difference between values for a state
 
+        print(value_table)
+
         # CHECK CONVERGENCE
         if worst_delta < accuracy_threshold:
             converged = True
 
-    print('Optimal value function found')
+    print('\nOptimal value function found')
     print(value_table)
     return value_table
 
