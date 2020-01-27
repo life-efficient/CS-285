@@ -85,31 +85,3 @@ print()
 epochs = 100
 optimal_value_function = train(env.model)
 optimal_policy = extract_policy(env.model, optimal_value_function)
-
-def policy_evaluation(value_table, model, error_threshold=0.01):
-    converged = False
-    sweep_idx = 0
-    while not converged:   
-        print('sweep ', sweep_idx)
-        sweep_idx += 1
-        worst_delta = 0     
-        for state in value_table.table.keys():
-            old_val = value_table[state]
-            possible_transitions = model(state, action)
-            new_val = 0
-            for possible_transition in possible_transitions: # considering all possible transitions
-                new_state, reward, probability = possible_transition # unpack that transition
-                new_val += probability * (reward + discount_factor * value_table[new_state]) # cumulate expected value
-
-            # UPDATE VALUE IN TABLE
-            value_table.update(state, new_val)
-
-            # EVALUATE DELTA
-            delta = abs(new_val - old_val) # difference between state values between iterations
-            worst_delta = max(worst_delta, delta) # update worst difference
-
-        # CHECK CONVERGED
-        if worst_delta < error_threshold:
-            converged = True
-
-    return value_table
