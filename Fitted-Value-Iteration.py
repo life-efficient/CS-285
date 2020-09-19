@@ -26,7 +26,7 @@ def fit_value_function(value_function, model, episodes, discount_factor, epochs=
         print('avg batch loss:', epoch_loss)
     print('done fitting')
     print('current value function:')
-    print({s: value_function(torch.tensor(s).view(1, -1).float()).item() for s in range(16)})
+    print({s: value_function(torch.tensor(s)).item() for s in range(16)})
     print()
 
 def sample_episodes(value_function, env, discount_factor, num_episodes=100, epsilon=0.1):
@@ -46,7 +46,8 @@ def sample_episodes(value_function, env, discount_factor, num_episodes=100, epsi
                 val = 0
                 for possible_transition in possible_transitions:
                     new_state, reward, probability = possible_transition
-                    new_state = torch.tensor(new_state).view((1, -1)).float()
+                    new_state = torch.tensor(new_state)#.view((1, -1))#.float()
+                    # print(new_state.shape)
                     val += probability * (reward + discount_factor * value_function(new_state))
                 if val >= best_val:
                     best_val = val
@@ -75,7 +76,8 @@ env = gym.make('FrozenLake-v0', is_slippery=is_slippery) # intialise environment
 model = Models.FrozenLakeModel
 env.model = types.MethodType(model, env) # attach model to env
 env.is_slippery = is_slippery # attach is slippery attribute to env for model to use
-value_function = NN([1, 32, 16, 32, 1]).float()
+num_states = 16
+value_function = NN([num_states, 32, 16, 32, 1], embedding=True).float()
 value_function.optimiser = torch.optim.Adam(value_function.parameters(), lr=0.005)
 train(env, value_function, discount_factor)
 
@@ -89,7 +91,7 @@ def extract_policy(value_function, model, discount_factor):
             val = 0
             for possible_transition in possible_transitions:
                 new_state, reward, probability = possible_transition
-                new_state = torch.tensor(new_state).view((1, -1)).float()
+                new_state = torch.tensor(new_state)#.view((1, -1)).float()
                 val += probability * (reward + discount_factor * value_function(new_state))
             if val > best_val:
                 best_val = val

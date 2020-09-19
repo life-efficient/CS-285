@@ -34,9 +34,9 @@ class DPValueDataset(Dataset):
                 _return = 0
                 for possible_transition in possible_transitions:
                     new_state, reward, probability = possible_transition
-                    new_state = torch.tensor(new_state).view((1, -1)).float()
+                    new_state = torch.tensor(new_state)#.view((1, -1)).float()
                     _return += probability * (reward + discount_factor * value_function(new_state))
-                state = torch.tensor(state).view((-1, 1)).float()
+                state = torch.tensor(state)#.view((-1, 1)).float()
                 _return = _return.detach() # needs to be detached because it has a history in the computation graph as a result of it beign computed using the value function
                 self.examples.append((state, _return))
 
